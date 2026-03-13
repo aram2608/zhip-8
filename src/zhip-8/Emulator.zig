@@ -82,7 +82,7 @@ pub fn emulate(self: *Emulator) void {
         0x0 => {
             switch (kk) {
                 // 00E0 - clear screen
-                0xE0 => @memset(self.display, 0),
+                0xE0 => @memset(&self.display, 0),
                 // 00EE - return from subroutine
                 0xEE => {
                     self.sp -= 1;
@@ -182,7 +182,24 @@ pub fn emulate(self: *Emulator) void {
             self.V[@intCast(x)] = std.crypto.random.int(u8) & @as(u8, @intCast(kk));
         },
         // DXYN - draw N-byte sprite at (VX, VY), VF = 1 if pixels collide
-        0xD => {},
+        0xD => {
+            const vx = self.V[@intCast(x)];
+            const vy = self.V[@intCast(y)];
+
+            for (0..n) |row| {
+                const byte = self.memory[self.I + row];
+                for (0..8) |col| {
+                    if (byte & @as(u8, 0x80) >> @intCast(col) != 0) {
+                        const px = (vx + col) % 64;
+                        const py = (vy + row) % 32;
+                        const idx = py * 64 + px;
+                        // If collision turn on
+                        if (self.display[idx] == 1) self.V[0xF] = 1;
+                        self.display[idx] ^= self.display[idx];
+                    }
+                }
+            }
+        },
         0xE => {
             switch (kk) {
                 // EX9E - skip next instruction if key in VX is pressed
