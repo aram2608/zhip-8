@@ -45,6 +45,7 @@ stack: [16]u16,
 sp: u16,
 // Register index
 I: u16,
+display: [64 * 32]u1,
 
 pub fn init() Emulator {
     return .{
@@ -56,6 +57,7 @@ pub fn init() Emulator {
         .V = std.mem.zeroes([16]u8),
         .memory = std.mem.zeroes([4096]u8),
         .stack = std.mem.zeroes([16]u16),
+        .display = std.mem.zeroes([64 * 32]u1),
     };
 }
 
@@ -80,7 +82,7 @@ pub fn emulate(self: *Emulator) void {
         0x0 => {
             switch (kk) {
                 // 00E0 - clear screen
-                0xE0 => std.debug.print("Clear screen\n", .{}),
+                0xE0 => @memset(self.display, 0),
                 // 00EE - return from subroutine
                 0xEE => {
                     self.sp -= 1;
@@ -180,9 +182,7 @@ pub fn emulate(self: *Emulator) void {
             self.V[@intCast(x)] = std.crypto.random.int(u8) & @as(u8, @intCast(kk));
         },
         // DXYN - draw N-byte sprite at (VX, VY), VF = 1 if pixels collide
-        0xD => {
-            std.debug.print("Draw sprite\n", .{});
-        },
+        0xD => {},
         0xE => {
             switch (kk) {
                 // EX9E - skip next instruction if key in VX is pressed
