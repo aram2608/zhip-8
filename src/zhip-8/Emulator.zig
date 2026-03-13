@@ -46,6 +46,7 @@ sp: u16,
 // Register index
 I: u16,
 display: [64 * 32]u1,
+keys: [16]u1,
 
 pub fn init() Emulator {
     return .{
@@ -58,6 +59,7 @@ pub fn init() Emulator {
         .memory = std.mem.zeroes([4096]u8),
         .stack = std.mem.zeroes([16]u16),
         .display = std.mem.zeroes([64 * 32]u1),
+        .keys = std.mem.zeroes([16]u1),
     };
 }
 
@@ -66,6 +68,13 @@ fn getOpcode(self: *Emulator) u16 {
     const op: u16 = @as(u16, self.memory[self.pc]) << 8 | self.memory[self.pc + 1];
     self.pc += 2;
     return op;
+}
+
+pub fn loadRom(self: *Emulator, path: []const u8) !void {
+    @memcpy(self.memory[0..self.font.len], &self.font);
+    const file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+    _ = try file.read(self.memory[0x200..]);
 }
 
 pub fn emulate(self: *Emulator) void {
@@ -119,7 +128,7 @@ pub fn emulate(self: *Emulator) void {
         },
         // 7XNN - VX += NN
         0x7 => {
-            self.V[@intCast(x)] += @intCast(kk);
+            self.V[@intCast(x)] +%= @intCast(kk);
         },
         // 8XYN - arithmetic and bitwise ops
         0x8 => {
@@ -177,6 +186,10 @@ pub fn emulate(self: *Emulator) void {
         0xA => {
             self.I = nnn;
         },
+        // BNNN - jump to NNN + V0
+        0xB => {
+            self.pc = nnn + self.V[0];
+        },
         // CXNN - set Vx to an anded random number
         0xC => {
             self.V[@intCast(x)] = std.crypto.random.int(u8) & @as(u8, @intCast(kk));
@@ -189,13 +202,13 @@ pub fn emulate(self: *Emulator) void {
             for (0..n) |row| {
                 const byte = self.memory[self.I + row];
                 for (0..8) |col| {
-                    if (byte & @as(u8, 0x80) >> @intCast(col) != 0) {
+                    if ((byte & (@as(u8, 0x80) >> @intCast(col))) != 0) {
                         const px = (vx + col) % 64;
                         const py = (vy + row) % 32;
                         const idx = py * 64 + px;
                         // If collision turn on
                         if (self.display[idx] == 1) self.V[0xF] = 1;
-                        self.display[idx] ^= self.display[idx];
+                        self.display[idx] ^= 1;
                     }
                 }
             }
@@ -204,17 +217,73 @@ pub fn emulate(self: *Emulator) void {
             switch (kk) {
                 // EX9E - skip next instruction if key in VX is pressed
                 0x9E => {
-                    std.debug.print("Key pressed\n", .{});
+                    if (self.keys[@intCast(self.V[x])] == 1) self.pc += 2;
                 },
                 // EXA1 - skip next instruction if key in VX is not pressed
                 0xA1 => {
-                    std.debug.print("Key not pressed\n", .{});
+                    if (self.keys[@intCast(self.V[x])] == 0) self.pc += 2;
                 },
                 else => std.debug.print("Unknown op: {d}\n", .{kk}),
             }
         },
         // FXNN - misc ops (timers, memory, input)
-        0xF => {},
+        0xF => {
+            switch (kk) {
+                // FX07 - VX = delay timer
+                0x07 => {
+                    self.V[@intCast(x)] = self.dt;
+                },
+                // FX0A - wait for key press, store key in VX
+                0x0A => {
+                    var found = false;
+                    for (self.keys, 0..) |k, i| {
+                        if (k == 1) {
+                            self.V[@intCast(x)] = @intCast(i);
+                            found = true;
+                            break;
+                        }
+                    }
+                    // If not found redo instruction
+                    if (!found) self.pc -= 2;
+                },
+                // FX15 - set delay timer = VX
+                0x15 => {
+                    self.dt = self.V[@intCast(x)];
+                },
+                // FX18 - set sound timer = VX
+                0x18 => {
+                    self.st = self.V[@intCast(x)];
+                },
+                // FX1E - I += VX
+                0x1E => {
+                    self.I += self.V[@intCast(x)];
+                },
+                // FX29 - set I to font sprite for digit VX
+                0x29 => {
+                    self.I = self.V[@intCast(x)] * 5;
+                },
+                // FX33 - BCD representation of VX in memory[I..I+2]
+                0x33 => {
+                    const val = self.V[@intCast(x)];
+                    self.memory[self.I] = val / 100;
+                    self.memory[self.I + 1] = (val / 10) % 10;
+                    self.memory[self.I + 2] = val % 10;
+                },
+                // FX55 - store V0..VX in memory starting at I
+                0x55 => {
+                    for (0..@intCast(x + 1)) |i| {
+                        self.memory[self.I + i] = self.V[i];
+                    }
+                },
+                // FX65 - load V0..VX from memory starting at I
+                0x65 => {
+                    for (0..@intCast(x + 1)) |i| {
+                        self.V[i] = self.memory[self.I + i];
+                    }
+                },
+                else => std.debug.print("Unknown op: F{X:0>2}\n", .{kk}),
+            }
+        },
         else => std.debug.print("Unknown op: {d}\n", .{nibble}),
     }
 }

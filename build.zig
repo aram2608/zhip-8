@@ -16,6 +16,11 @@ pub fn build(b: *std.Build) void {
         .c_sdl_preferred_linkage = .static,
     });
 
+    const chizel = b.dependency("chizel", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const exe = b.addExecutable(.{
         .name = "zhip-8",
         .root_module = b.createModule(.{
@@ -29,6 +34,7 @@ pub fn build(b: *std.Build) void {
     });
 
     exe.root_module.addImport("sdl3", sdl3.module("sdl3"));
+    exe.root_module.addImport("chizel", chizel.module("chizel"));
 
     b.installArtifact(exe);
 

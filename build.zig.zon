@@ -6,6 +6,10 @@
             .url = "git+https://codeberg.org/7Games/zig-sdl3?ref=v0.1.9#45ffa097ad183a72f81d42f9f8c0df0398663814",
             .hash = "sdl3-0.1.9-NmT1Q2k0JwAtPRns9E3OO6qpqpvy8mn80guJ8L209AtI",
         },
+        .chizel = .{
+            .url = "git+https://github.com/aram2608/chizel.git?ref=main#b3f4a50c3c41f689a9031b758a6c4c7f891c5529",
+            .hash = "chizel-0.0.0-ZmKJ2bjaAQAuFJaV5fD7irdAPye6ur4NxB9o7PGN8Im2",
+        },
     },
     .minimum_zig_version = "0.15.2",
     .paths = .{""},
