@@ -83,7 +83,13 @@ pub fn main() !void {
         const dt = fps_cap.delay();
         _ = dt;
 
-        emu.emulate();
+        for (0..10) |i| {
+            _ = i;
+            emu.emulate();
+        }
+
+        if (emu.dt > 0) emu.dt -= 1;
+        if (emu.st > 0) emu.st -= 1;
 
         try renderer.setDrawColor(.{ .r = 0, .g = 0, .b = 0, .a = 255 });
         try renderer.clear();
