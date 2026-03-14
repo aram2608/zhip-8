@@ -1,33 +1,23 @@
+//! Memory: 4 kilobytes, about 4096 bytes
+//! Display: 64 x 32, about 640 and 320
+//! Program counter: points at current instruction
+//! Index register: I, points somewhere in the memory
+//! Stack for 16-bit addresses
+//! Delay timer: 8-bit timer, basically fps 60 hz, so 60 times/sec
+//! Sound timer: 8-bit timer for sounds
+//! 16 8-bit (1 byte) registers for variables, 0 through F in hexadecimal
+//!
+//! Instructions follow the EXYN syntax.
+//! E is the first nibble and represents the type of instruction.
+//! X is the second nibble and looks up vars in the var registers (VX).
+//! Y is the third nibble and looks up vars in the var registers (VY).
+//! N is the fourth nibble. A 4-bit number.
+//! NN is the second byte. An 8-bit number.
+//! NNN is the second, third, and fourth nibbles. A 12-bit memory address.
+
 const std = @import("std");
 const Emulator = @This();
 
-// Memory: 4 kilobytes, about 4096 bytes
-// Display: 64 x 32, about 640 and 320
-// Program counter: points at current instruction
-// Index register: I, points somewhere in the memory
-// Stack for 16-bit addresses
-// Delay timer: 8-bit timer, basically fps 60 hz, so 60 times/sec
-// Sound timer: 8-bit timer for sounds
-// 16 8-bit (1 byte) registers for variables, 0 through F in hexadecimal
-
-font: [16 * 5]u8 = .{
-    0xF0, 0x90, 0x90, 0x90, 0xF0, //0
-    0x20, 0x60, 0x20, 0x20, 0x70, //1
-    0xF0, 0x10, 0xF0, 0x80, 0xF0, //2
-    0xF0, 0x10, 0xF0, 0x10, 0xF0, //3
-    0x90, 0x90, 0xF0, 0x10, 0x10, //4
-    0xF0, 0x80, 0xF0, 0x10, 0xF0, //5
-    0xF0, 0x80, 0xF0, 0x90, 0xF0, //6
-    0xF0, 0x10, 0x20, 0x40, 0x40, //7
-    0xF0, 0x90, 0xF0, 0x90, 0xF0, //8
-    0xF0, 0x90, 0xF0, 0x10, 0xF0, //9
-    0xF0, 0x90, 0xF0, 0x90, 0x90, //A
-    0xE0, 0x90, 0xE0, 0x90, 0xE0, //B
-    0xF0, 0x80, 0x80, 0x80, 0xF0, //C
-    0xE0, 0x90, 0x90, 0x90, 0xE0, //D
-    0xF0, 0x80, 0xF0, 0x80, 0xF0, //E
-    0xF0, 0x80, 0xF0, 0x80, 0x80, //F
-},
 // Available RAM for emulator
 memory: [4096]u8,
 // Variable register V0 to VF
@@ -38,6 +28,7 @@ dt: u8,
 st: u8,
 
 // Program counter
+// Needs to start after the font memory
 pc: u16 = 0x200,
 // Subroutine stack
 stack: [16]u16,
@@ -46,6 +37,7 @@ sp: u16,
 // Register index
 I: u16,
 display: [64 * 32]u1,
+// Keyyboard inputs
 keys: [16]u1,
 
 pub fn init() Emulator {
@@ -71,9 +63,10 @@ fn getOpcode(self: *Emulator) u16 {
 }
 
 pub fn loadRom(self: *Emulator, path: []const u8) !void {
-    @memcpy(self.memory[0..self.font.len], &self.font);
+    @memcpy(self.memory[0..font.len], &font);
     const file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
+    // ROMs are loaded at the program counter
     _ = try file.read(self.memory[0x200..]);
 }
 
@@ -287,6 +280,25 @@ pub fn emulate(self: *Emulator) void {
         else => std.debug.print("Unknown op: {d}\n", .{nibble}),
     }
 }
+
+const font: [16 * 5]u8 = .{
+    0xF0, 0x90, 0x90, 0x90, 0xF0, //0
+    0x20, 0x60, 0x20, 0x20, 0x70, //1
+    0xF0, 0x10, 0xF0, 0x80, 0xF0, //2
+    0xF0, 0x10, 0xF0, 0x10, 0xF0, //3
+    0x90, 0x90, 0xF0, 0x10, 0x10, //4
+    0xF0, 0x80, 0xF0, 0x10, 0xF0, //5
+    0xF0, 0x80, 0xF0, 0x90, 0xF0, //6
+    0xF0, 0x10, 0x20, 0x40, 0x40, //7
+    0xF0, 0x90, 0xF0, 0x90, 0xF0, //8
+    0xF0, 0x90, 0xF0, 0x10, 0xF0, //9
+    0xF0, 0x90, 0xF0, 0x90, 0x90, //A
+    0xE0, 0x90, 0xE0, 0x90, 0xE0, //B
+    0xF0, 0x80, 0x80, 0x80, 0xF0, //C
+    0xE0, 0x90, 0x90, 0x90, 0xE0, //D
+    0xF0, 0x80, 0xF0, 0x80, 0xF0, //E
+    0xF0, 0x80, 0xF0, 0x80, 0x80, //F
+};
 
 test {
     const emu = init();
