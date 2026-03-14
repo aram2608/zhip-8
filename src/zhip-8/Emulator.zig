@@ -191,15 +191,16 @@ pub fn emulate(self: *Emulator) void {
         0xD => {
             const vx = self.V[@intCast(x)];
             const vy = self.V[@intCast(y)];
+            self.V[0xF] = 0;
 
             for (0..n) |row| {
                 const byte = self.memory[self.I + row];
                 for (0..8) |col| {
                     if ((byte & (@as(u8, 0x80) >> @intCast(col))) != 0) {
                         const px = (vx + col) % 64;
-                        const py = (vy + row) % 32;
+                        const py = vy + row;
+                        if (py >= 32) break;
                         const idx = py * 64 + px;
-                        // If collision turn on
                         if (self.display[idx] == 1) self.V[0xF] = 1;
                         self.display[idx] ^= 1;
                     }
