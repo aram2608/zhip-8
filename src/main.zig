@@ -1,23 +1,43 @@
 const std = @import("std");
 const sdl3 = @import("sdl3");
+// TODO: Make a debug console
+// we can create a Cmd with chizel to fire the ROM
+// in standard run mode or debug mode with some nice features
+const Debug = @import("zhip-8").Debug;
 const Emulator = @import("zhip-8").Emulator;
 const chizel = @import("chizel");
 
-const Opts = struct {
-    file_path: []const u8 = "",
+const Cmds = union(enum) {
+    debug: struct {
+        file_path: []const u8 = "",
 
-    pub fn validate_file_path(value: []const u8) !void {
-        if (value.len == 0) return error.RomFileRequired;
-    }
+        pub fn validate_file_path(value: []const u8) !void {
+            if (value.len == 0) return error.RomFileRequired;
+        }
 
-    pub const shorts = .{ .file_path = 'f' };
-    pub const help = .{ .file_path = "Path to ROM file" };
+        pub const shorts = .{ .file_path = 'f' };
+        pub const help = .{ .file_path = "Path to ROM file" };
+    },
+    emulate: struct {
+        file_path: []const u8 = "",
+
+        pub fn validate_file_path(value: []const u8) !void {
+            if (value.len == 0) return error.RomFileRequired;
+        }
+
+        pub const shorts = .{ .file_path = 'f' };
+        pub const help = .{ .file_path = "Path to ROM file" };
+    },
+    pub const help = .{
+        .emulate = "Emulate in a 640x320 pixel window",
+        .debug = "Load a rich debug window for the emulator",
+    };
     pub const config = .{ .env_prefix = "ZHIP8_" };
 };
 
 const fps = 60;
-const width = 640;
-const height = 320;
+const width = 1200;
+const height = 800;
 
 fn scancodeToChip8(scancode: sdl3.Scancode) ?u8 {
     return switch (scancode) {
@@ -45,7 +65,7 @@ pub fn main() !void {
     var args = try std.process.argsWithAllocator(std.heap.page_allocator);
     defer args.deinit();
     const arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    var parser = chizel.Chip(Opts).init(&args, arena);
+    var parser = chizel.Chizel(Cmds).init(&args, arena);
     defer parser.deinit();
 
     const result = try parser.parse();
@@ -63,69 +83,91 @@ pub fn main() !void {
     try sdl3.init(init_flags);
     defer sdl3.quit(init_flags);
 
-    const window, const renderer = try sdl3.render.Renderer.initWithWindow(
-        "zhip-8",
-        width,
-        height,
-        .{},
-    );
-    defer window.deinit();
-    defer renderer.deinit();
-
-    var fps_cap = sdl3.extras.FramerateCapper(f32){ .mode = .{ .limited = fps } };
-
-    var emu = Emulator.init();
-
-    try emu.loadRom(result.opts.file_path);
-
-    var quit = false;
-    while (!quit) {
-        const dt = fps_cap.delay();
-        _ = dt;
-
-        for (0..10) |i| {
-            _ = i;
-            emu.emulate();
-        }
-
-        if (emu.dt > 0) emu.dt -= 1;
-        if (emu.st > 0) emu.st -= 1;
-
-        try renderer.setDrawColor(.{ .r = 0, .g = 0, .b = 0, .a = 255 });
-        try renderer.clear();
-
-        try renderer.setDrawColor(.{ .r = 255, .g = 255, .b = 255, .a = 255 });
-        for (0..32) |row| {
-            for (0..64) |col| {
-                if (emu.display[row * 64 + col] == 1) {
-                    try renderer.renderFillRect(.{
-                        .x = @floatFromInt(col * 10),
-                        .y = @floatFromInt(row * 10),
-                        .h = 10,
-                        .w = 10,
-                    });
-                }
-            }
-        }
-
-        try renderer.present();
-
-        while (sdl3.events.poll()) |event| {
-            switch (event) {
-                .quit => quit = true,
-                .terminating => quit = true,
-                .key_down => |key| {
-                    if (scancodeToChip8(key.scancode.?)) |chip_key| {
-                        emu.keys[chip_key] = 1;
-                    }
-                },
-                .key_up => |key| {
-                    if (scancodeToChip8(key.scancode.?)) |chip_key| {
-                        emu.keys[chip_key] = 0;
-                    }
-                },
-                else => {},
-            }
-        }
+    const opts = result.opts;
+    switch (opts) {
+        .debug => |d| {
+            var debug = try Debug.init();
+            defer debug.deinit();
+            try debug.loadRom(d.file_path);
+            try debug.mainLoop();
+        },
+        .emulate => |e| {
+            var emu = try Emulator.init();
+            defer emu.deinit();
+            try emu.loadRom(e.file_path);
+            try emu.mainLoop();
+        },
     }
+
+    // const window, var renderer = try sdl3.render.Renderer.initWithWindow(
+    //     "zhip-8",
+    //     width,
+    //     height,
+    //     .{},
+    // );
+    // defer window.deinit();
+    // defer renderer.deinit();
+
+    // var fps_cap = sdl3.extras.FramerateCapper(f32){ .mode = .{ .limited = fps } };
+
+    // var emu = Emulator.init();
+
+    // try emu.loadRom(result.opts.file_path);
+
+    // var quit = false;
+    // while (!quit) {
+    //     const dt = fps_cap.delay();
+    //     _ = dt;
+
+    //     for (0..10) |i| {
+    //         _ = i;
+    //         emu.emulate();
+    //     }
+
+    //     if (emu.dt > 0) emu.dt -= 1;
+    //     if (emu.st > 0) emu.st -= 1;
+
+    //     try renderer.setDrawColor(.{ .r = 0, .g = 0, .b = 0, .a = 255 });
+    //     try renderer.clear();
+
+    //     try renderer.setDrawColor(.{ .r = 255, .g = 255, .b = 255, .a = 255 });
+    //     for (0..32) |row| {
+    //         for (0..64) |col| {
+    //             if (emu.display[row * 64 + col] == 1) {
+    //                 try renderer.renderFillRect(.{
+    //                     .x = @floatFromInt(col * 10),
+    //                     .y = @floatFromInt(row * 10),
+    //                     .h = 10,
+    //                     .w = 10,
+    //                 });
+    //             }
+    //         }
+    //     }
+
+    //     try renderer.setDrawColor(.{ .r = 0, .g = 0, .b = 255, .a = 255 });
+
+    //     try renderer.present();
+
+    //     while (sdl3.events.poll()) |event| {
+    //         switch (event) {
+    //             .quit => quit = true,
+    //             .terminating => quit = true,
+    //             .key_down => |key| {
+    //                 if (key.scancode.? == .escape) {
+    //                     quit = true;
+    //                     break;
+    //                 }
+    //                 if (scancodeToChip8(key.scancode.?)) |chip_key| {
+    //                     emu.keys[chip_key] = 1;
+    //                 }
+    //             },
+    //             .key_up => |key| {
+    //                 if (scancodeToChip8(key.scancode.?)) |chip_key| {
+    //                     emu.keys[chip_key] = 0;
+    //                 }
+    //             },
+    //             else => {},
+    //         }
+    //     }
+    // }
 }

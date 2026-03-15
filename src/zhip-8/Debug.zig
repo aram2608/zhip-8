@@ -1,17 +1,22 @@
+const std = @import("std");
 const CPU = @import("CPU.zig");
 const sdl3 = @import("sdl3");
-const Emulator = @This();
+const Debug = @This();
 
 fps_cap: sdl3.extras.FramerateCapper(f32),
 window: sdl3.video.Window,
 renderer: sdl3.render.Renderer,
 emu: CPU,
 
-pub fn init() !Emulator {
+const keypads = [_]sdl3.rect.Rect(f32){
+    .{ .x = 10, .y = 320, .w = 50, .h = 50 },
+};
+
+pub fn init() !Debug {
     const window, const renderer = try sdl3.render.Renderer.initWithWindow(
         "zhip-8",
-        640,
-        320,
+        1200,
+        800,
         .{},
     );
     return .{
@@ -22,16 +27,16 @@ pub fn init() !Emulator {
     };
 }
 
-pub fn deinit(self: *Emulator) void {
+pub fn deinit(self: *Debug) void {
     self.window.deinit();
     self.renderer.deinit();
 }
 
-pub fn loadRom(self: *Emulator, path: []const u8) !void {
+pub fn loadRom(self: *Debug, path: []const u8) !void {
     try self.emu.loadRom(path);
 }
 
-pub fn mainLoop(self: *Emulator) !void {
+pub fn mainLoop(self: *Debug) !void {
     var quit = false;
     while (!quit) {
         const dt = self.fps_cap.delay();
@@ -63,6 +68,7 @@ pub fn mainLoop(self: *Emulator) !void {
         }
 
         try self.renderer.setDrawColor(.{ .r = 0, .g = 0, .b = 255, .a = 255 });
+        try self.renderer.renderRects(&keypads);
 
         try self.renderer.present();
 

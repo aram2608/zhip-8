@@ -16,6 +16,8 @@ pub fn build(b: *std.Build) void {
         .c_sdl_preferred_linkage = .static,
     });
 
+    module.addImport("sdl3", sdl3.module("sdl3"));
+
     const chizel = b.dependency("chizel", .{
         .target = target,
         .optimize = optimize,
