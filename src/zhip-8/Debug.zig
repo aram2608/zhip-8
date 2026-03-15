@@ -3,9 +3,13 @@ const CPU = @import("CPU.zig");
 const sdl3 = @import("sdl3");
 const Debug = @This();
 
+const State = enum { step, run, pause };
+
 fps_cap: sdl3.extras.FramerateCapper(f32),
 window: sdl3.video.Window,
 renderer: sdl3.render.Renderer,
+font: sdl3.ttf.Font,
+text_engine: sdl3.ttf.RendererTextEngine,
 emu: CPU,
 
 pub fn init() !Debug {
@@ -18,6 +22,8 @@ pub fn init() !Debug {
     return .{
         .fps_cap = sdl3.extras.FramerateCapper(f32){ .mode = .{ .limited = 60 } },
         .window = window,
+        .font = try sdl3.ttf.Font.init("font/JetBrainsMono-Bold.ttf", 20.0),
+        .text_engine = try sdl3.ttf.RendererTextEngine.init(renderer),
         .renderer = renderer,
         .emu = CPU.init(),
     };
@@ -26,6 +32,8 @@ pub fn init() !Debug {
 pub fn deinit(self: *Debug) void {
     self.window.deinit();
     self.renderer.deinit();
+    self.font.deinit();
+    self.text_engine.deinit();
 }
 
 pub fn loadRom(self: *Debug, path: []const u8) !void {
@@ -39,7 +47,15 @@ const key_order = [16]usize{
     0xA, 0x0, 0xB, 0xF, // z x c v
 };
 
-pub fn drawKeys(self: *const Debug) !void {
+const key_tag = [16]u8{
+    '1', '2', '3', '4',
+    'q', 'w', 'e', 'r',
+    'a', 's', 'd', 'f',
+    'z', 'x', 'c', 'v',
+};
+
+fn drawKeys(self: *const Debug) !void {
+    var buf: [4]u8 = undefined;
     const magic_x: f32 = 20;
     const magic_y: f32 = 320;
     const size: f32 = 60;
@@ -59,29 +75,98 @@ pub fn drawKeys(self: *const Debug) !void {
             );
         }
 
+        const x: f32 = magic_x + col * (size + pad);
+        const y: f32 = magic_y + row * (size + pad);
+
         try self.renderer.renderFillRect(.{
-            .x = magic_x + col * (size + pad),
-            .y = magic_y + row * (size + pad),
+            .x = x,
+            .y = y,
             .w = size,
             .h = size,
         });
+
+        const label: []const u8 = try std.fmt.bufPrint(
+            &buf,
+            "{c}",
+            .{key_tag[i]},
+        );
+        const text = try sdl3.ttf.Text.init(.{ .value = self.text_engine.value }, self.font, label);
+        try sdl3.ttf.drawRendererText(text, x, y);
     }
+}
+
+const commands = [_]struct { label: []const u8, key: []const u8 }{
+    .{ .label = "Step", .key = "N" },
+    .{ .label = "Run", .key = "Space" },
+    .{ .label = "Pause", .key = "P" },
+    .{ .label = "Reset", .key = "K" },
+};
+
+fn drawCommands(self: *Debug) !void {
+    const panel_x: f32 = 660;
+    const panel_y: f32 = 20;
+    const panel_w: f32 = 220;
+    const line_h: f32 = 30;
+    const pad: f32 = 10;
+    const panel_h: f32 = pad * 2 + commands.len * line_h;
+
+    try self.renderer.setDrawColor(.{ .r = 30, .g = 30, .b = 30, .a = 255 });
+    try self.renderer.renderFillRect(
+        .{ .x = panel_x, .y = panel_y, .w = panel_w, .h = panel_h },
+    );
+
+    var buf: [32]u8 = undefined;
+    for (commands, 0..) |cmd, i| {
+        const label = try std.fmt.bufPrint(
+            &buf,
+            "{s}: {s}",
+            .{ cmd.label, cmd.key },
+        );
+        const text = try sdl3.ttf.Text.init(
+            .{ .value = self.text_engine.value },
+            self.font,
+            label,
+        );
+        const y: f32 = panel_y + pad + @as(f32, @floatFromInt(i)) * line_h;
+        try sdl3.ttf.drawRendererText(text, panel_x + pad, y);
+    }
+}
+
+fn reset(self: *Debug) void {
+    self.emu.pc = 0x200;
+    self.emu.I = 0;
+    self.emu.sp = 0;
+    @memset(&self.emu.V, 0);
+    @memset(&self.emu.display, 0);
+    @memset(&self.emu.keys, 0);
+    @memset(&self.emu.stack, 0);
+    self.emu.dt = 0;
+    self.emu.st = 0;
 }
 
 pub fn mainLoop(self: *Debug) !void {
     var quit = false;
-    var step = false;
+    var state: State = .pause;
     while (!quit) {
         const dt = self.fps_cap.delay();
         _ = dt;
 
-        if (step) {
-            for (0..10) |i| {
-                _ = i;
-                self.emu.emulate();
-            }
+        switch (state) {
+            .step => {
+                for (0..10) |i| {
+                    _ = i;
+                    self.emu.emulate();
+                }
+                state = .pause;
+            },
+            .run => {
+                for (0..10) |i| {
+                    _ = i;
+                    self.emu.emulate();
+                }
+            },
+            .pause => {},
         }
-        step = false;
 
         if (self.emu.dt > 0) self.emu.dt -= 1;
         if (self.emu.st > 0) self.emu.st -= 1;
@@ -106,6 +191,8 @@ pub fn mainLoop(self: *Debug) !void {
         try self.renderer.setDrawColor(.{ .r = 0, .g = 0, .b = 255, .a = 255 });
         try self.drawKeys();
 
+        try self.drawCommands();
+
         try self.renderer.present();
 
         while (sdl3.events.poll()) |event| {
@@ -118,7 +205,19 @@ pub fn mainLoop(self: *Debug) !void {
                         break;
                     }
                     if (key.scancode.? == .n) {
-                        step = true;
+                        state = .step;
+                    }
+                    if (key.scancode.? == .space) {
+                        state = .run;
+                    }
+                    if (key.scancode.? == .p) {
+                        state = .pause;
+                        break;
+                    }
+                    if (key.scancode.? == .k) {
+                        self.reset();
+                        state = .pause;
+                        break;
                     }
                     if (scancodeToChip8(key.scancode.?)) |chip_key| {
                         self.emu.keys[chip_key] = 1;

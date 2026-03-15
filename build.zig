@@ -13,6 +13,7 @@ pub fn build(b: *std.Build) void {
     const sdl3 = b.dependency("sdl3", .{
         .target = target,
         .optimize = optimize,
+        .ext_ttf = true,
         .c_sdl_preferred_linkage = .static,
     });
 
